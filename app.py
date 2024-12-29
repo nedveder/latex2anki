@@ -1,4 +1,5 @@
 import os
+import csv
 from flask import Flask, render_template, request, flash, redirect, url_for, send_file
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
@@ -106,11 +107,11 @@ def generate_anki_cards(content, content_type):
 
     prompt = f"""Generate an Anki card for the following LaTeX content:
     ```
-    {text}
+    {content}
     ```
     Please create the card in the EXACT format below, maintaining LaTeX formatting where appropriate:
     
-    {type_template[card_type]}
+    {templates[content_type]}
     
     Additional instructions:
     1. Ensure the content is concise yet comprehensive.
@@ -127,9 +128,13 @@ def generate_anki_cards(content, content_type):
     return prompt
 
 
-def generate_card(text, type):
+def generate_card(text, card_type):
     logger.info("Generating quiz questions")
-    prompt = generate_anki_prompt(text, type)
+    prompt = f"""Generate an Anki card for the following LaTeX content:
+    ```
+    {text}
+    ```
+    Please create the card in the EXACT format below, maintaining LaTeX formatting where appropriate."""
     response = client.chat.completions.create(
         model="gpt-4o",
         messages=[
@@ -153,15 +158,17 @@ def extract_sections(tex_file_path):
     with open(csv_file_path, 'w', newline='', encoding='utf-8') as csvfile:
         csvwriter = csv.writer(csvfile)
         # Write header
-        csvwriter.writerow(['Type', 'Title', 'Subject', 'Tags',])
+        csvwriter.writerow(['Type', 'Title', 'Subject', 'Tags'])
 
         current_subject = ""
         for item in soup.find_all(['section', 'definition', 'theorem', 'claim']):
             if item.name == 'section':
                 current_subject = str(item.string).strip()
             elif item.name in ['definition', 'theorem', 'claim']:
-                # TODO
-                csvwriter.writerow([type_, title, front_data, back_data, current_subject, tags])
+                item_type = item.name
+                item_title = str(item.string).strip() if item.string else ""
+                tags = [current_subject, item_type]
+                csvwriter.writerow([item_type, item_title, current_subject, ",".join(tags)])
 
 
 @app.route('/')

@@ -6,7 +6,6 @@ from dotenv import load_dotenv
 import logging
 from openai import OpenAI
 from TexSoup import TexSoup
-import fitz  # PyMuPDF for PDF processing
 import genanki
 import random
 from google.cloud import translate_v2 as translate
@@ -69,7 +68,7 @@ def translate_text(text, target_language='en'):
 def extract_content_from_pdf(pdf_path):
     content = []
     try:
-        doc = fitz.open(pdf_path)
+        doc = None # TODO
         for page in doc:
             content.append(page.get_text())
         return "\n".join(content)

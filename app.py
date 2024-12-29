@@ -101,10 +101,19 @@ BASIC_MODEL = genanki.Model(
     templates=[
         {
             'name': 'Card 1',
-            'qfmt': '{{Front}}',
-            'afmt': '{{FrontSide}}<hr id="answer">{{Back}}',
+            'qfmt': '[latex]{{Front}}[/latex]',
+            'afmt': '[latex]{{FrontSide}}[/latex]<hr id="answer">[latex]{{Back}}[/latex]',
         },
-    ])
+    ],
+    css="""
+        .card {
+            font-family: arial;
+            font-size: 20px;
+            text-align: center;
+            color: black;
+            background-color: white;
+        }
+    """)
 
 def generate_anki_cards(content, content_type):
     cards = []
@@ -128,10 +137,15 @@ def generate_anki_cards(content, content_type):
             {section}
             
             Format for {section_type}:
-            Front: [Concise title/question]
-            Back: [Detailed explanation with LaTeX formatting preserved]
+            Front: [Concise title/question in LaTeX format]
+            Back: [Detailed explanation]
             
-            Keep mathematical notation intact."""
+            Important rules:
+            1. Preserve ALL mathematical expressions in LaTeX format using $ or $$ delimiters
+            2. Keep ALL original LaTeX commands and environments
+            3. Ensure equations and mathematical symbols are properly formatted
+            4. Do not convert LaTeX math to plain text
+            5. Keep the original LaTeX formatting intact"""
             
             response = client.messages.create(
                 model="claude-3-opus-20240229",
@@ -149,6 +163,18 @@ def generate_anki_cards(content, content_type):
             if 'Front:' in card_content and 'Back:' in card_content:
                 front = re.search(r'Front:(.*?)(?=Back:)', card_content, re.DOTALL).group(1).strip()
                 back = re.search(r'Back:(.*)', card_content, re.DOTALL).group(1).strip()
+                
+                # Ensure LaTeX content is properly formatted
+                def validate_latex(text):
+                    # Ensure math environments are properly wrapped
+                    if '$' not in text and '\\[' not in text and '\\begin{' not in text:
+                        # If no LaTeX delimiters found, wrap the whole content
+                        return f"$${text}$$"
+                    return text
+                
+                front = validate_latex(front)
+                back = validate_latex(back)
+                
                 cards.append({
                     'model': BASIC_MODEL,
                     'fields': [front, back]

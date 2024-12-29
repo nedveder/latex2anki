@@ -77,66 +77,61 @@ def parse_lyx_file(lyx_path):
     latex_content = re.findall(r'\\begin_layout.*?\n(.*?)\\end_layout', content, re.DOTALL)
     return "\n".join(latex_content)
 
+# Define Anki note models
+BASIC_MODEL = genanki.Model(
+    1607392319,
+    'Basic Math Card',
+    fields=[
+        {'name': 'Front'},
+        {'name': 'Back'},
+    ],
+    templates=[
+        {
+            'name': 'Card 1',
+            'qfmt': '{{Front}}',
+            'afmt': '{{FrontSide}}<hr id="answer">{{Back}}',
+        },
+    ])
+
 def generate_anki_cards(content, content_type):
     cards = []
     
-    # Define card templates
-    templates = {
-        'definition': {
-            'front': '{{Term}}',
-            'back': '{{Definition}}'
-        },
-        'theorem': {
-            'front': '{{Theorem}}',
-            'back': '{{Proof}}'
-        },
-        'example': {
-            'front': '{{Concept}}',
-            'back': '{{Example}}\n{{Explanation}}'
-        }
-    }
-
-    prompt = f"""Generate an Anki card for the following LaTeX content:
-    ```
-    {content}
-    ```
-    Please create the card in the EXACT format below, maintaining LaTeX formatting where appropriate:
+    # Process content into smaller chunks
+    sections = re.split(r'\n(?=\\(?:section|subsection|definition|theorem|example))', content)
     
-    {templates[content_type]}
+    for section in sections:
+        if not section.strip():
+            continue
+            
+        response = client.messages.create(
+            model="claude-3-opus-20240229",
+            max_tokens=500,
+            temperature=0.2,
+            system=SYSTEM_PROMPT,
+            messages=[{
+                "role": "user",
+                "content": f"Create an Anki card from this LaTeX content:\n{section}"
+            }]
+        )
+        
+        # Parse the response and create card
+        card_content = response.content[0].text
+        try:
+            # Simple parsing - adjust based on your actual response format
+            parts = card_content.split('\n\n', 1)
+            if len(parts) == 2:
+                front, back = parts
+                cards.append({
+                    'model': BASIC_MODEL,
+                    'fields': [front.strip(), back.strip()]
+                })
+        except Exception as e:
+            logger.error(f"Error parsing card content: {e}")
+            continue
     
-    Additional instructions:
-    1. Ensure the content is concise yet comprehensive.
-    2. For definitions, provide a clear and precise explanation.
-    3. For theorems and claims, include key points of the proof or justification.
-    4. Use bullet points or numbered lists for clarity when appropriate.
-    5. Include relevant formulas, diagrams, or examples if they enhance understanding.
-    6. Avoid unnecessary information or verbose explanations.
-    7. Use LaTeX formatting for mathematical symbols, equations, and special characters.
-    8. Proofread the card for accuracy and clarity before submission.
-    
-    Make sure to follow the format strictly to create effective Anki cards.
-    """
-    return prompt
+    return cards
 
 
-def generate_card(text, card_type):
-    logger.info("Generating quiz questions")
-    prompt = f"""Generate an Anki card for the following LaTeX content:
-    ```
-    {text}
-    ```
-    Please create the card in the EXACT format below, maintaining LaTeX formatting where appropriate."""
-    response = client.messages.create(
-        model="claude-3-opus-20240229",
-        max_tokens=500,
-        temperature=0.2,
-        system=SYSTEM_PROMPT,
-        messages=[{
-            "role": "user",
-            "content": prompt
-        }]
-    ).content[0].text
-    return response
 
 
 def extract_sections(tex_file_path):

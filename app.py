@@ -4,7 +4,7 @@ from flask import Flask, render_template, request, flash, redirect, url_for, sen
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
 import logging
-from openai import OpenAI
+import anthropic
 from TexSoup import TexSoup
 import genanki
 import random
@@ -29,7 +29,7 @@ app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
 app.secret_key = os.urandom(24)
 
 # Initialize clients
-client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+client = anthropic.Anthropic(api_key=os.getenv('ANTHROPIC_API_KEY'))
 translate_client = translate.Client()
 
 SYSTEM_PROMPT = """
@@ -126,18 +126,16 @@ def generate_card(text, card_type):
     {text}
     ```
     Please create the card in the EXACT format below, maintaining LaTeX formatting where appropriate."""
-    response = client.chat.completions.create(
-        model="gpt-4o",
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": prompt}
-        ],
-        temperature=0.2,
+    response = client.messages.create(
+        model="claude-3-opus-20240229",
         max_tokens=500,
-        top_p=1,
-        frequency_penalty=0,
-        presence_penalty=0
-    ).choices[0].message.content
+        temperature=0.2,
+        system=SYSTEM_PROMPT,
+        messages=[{
+            "role": "user",
+            "content": prompt
+        }]
+    ).content[0].text
     return response
 
 

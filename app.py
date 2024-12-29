@@ -310,4 +310,5 @@ def upload_file():
 
 if __name__ == '__main__':
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-    app.run(debug=True,port=4999)
+    port = int(os.getenv('FLASK_PORT', 5000))
+    app.run(debug=True, host='0.0.0.0', port=port)

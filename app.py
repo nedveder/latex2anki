@@ -29,8 +29,16 @@ app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
 app.secret_key = os.urandom(24)
 
 # Initialize clients
-client = anthropic.Anthropic(api_key=os.getenv('ANTHROPIC_API_KEY'))
-translate_client = translate.Client()
+api_key = os.getenv('ANTHROPIC_API_KEY')
+if not api_key:
+    raise ValueError("ANTHROPIC_API_KEY environment variable is not set")
+client = anthropic.Anthropic(api_key=api_key)
+
+try:
+    translate_client = translate.Client()
+except Exception as e:
+    logger.warning(f"Google Translate client initialization failed: {e}")
+    translate_client = None
 
 SYSTEM_PROMPT = """
 You are an expert educator and Anki card creator. Your task is to generate Anki cards in a precise format. Always adhere to the following rules:
@@ -50,11 +58,16 @@ def translate_text(text, target_language='en'):
     if target_language == 'en':
         return text
     
+    if not translate_client:
+        logger.warning("Translation service not available")
+        return text
+    
     try:
         result = translate_client.translate(text, target_language=target_language)
         return result['translatedText']
     except Exception as e:
         logger.error(f"Translation error: {e}")
+        flash('Translation failed, proceeding with original text', 'warning')
         return text
 
 def extract_content_from_pdf(pdf_path):
@@ -103,32 +116,53 @@ def generate_anki_cards(content, content_type):
         if not section.strip():
             continue
             
-        response = client.messages.create(
-            model="claude-3-opus-20240229",
-            max_tokens=500,
-            temperature=0.2,
-            system=SYSTEM_PROMPT,
-            messages=[{
-                "role": "user",
-                "content": f"Create an Anki card from this LaTeX content:\n{section}"
-            }]
-        )
-        
-        # Parse the response and create card
-        card_content = response.content[0].text
         try:
-            # Simple parsing - adjust based on your actual response format
-            parts = card_content.split('\n\n', 1)
-            if len(parts) == 2:
-                front, back = parts
+            # Determine content type from section
+            section_type = 'definition'
+            if '\\theorem' in section:
+                section_type = 'theorem'
+            elif '\\example' in section:
+                section_type = 'example'
+                
+            prompt = f"""Create an Anki card from this LaTeX content:
+            {section}
+            
+            Format for {section_type}:
+            Front: [Concise title/question]
+            Back: [Detailed explanation with LaTeX formatting preserved]
+            
+            Keep mathematical notation intact."""
+            
+            response = client.messages.create(
+                model="claude-3-opus-20240229",
+                max_tokens=1000,
+                temperature=0.2,
+                system=SYSTEM_PROMPT,
+                messages=[{
+                    "role": "user",
+                    "content": prompt
+                }]
+            )
+            
+            # Parse the response and create card
+            card_content = response.content[0].text
+            if 'Front:' in card_content and 'Back:' in card_content:
+                front = re.search(r'Front:(.*?)(?=Back:)', card_content, re.DOTALL).group(1).strip()
+                back = re.search(r'Back:(.*)', card_content, re.DOTALL).group(1).strip()
                 cards.append({
                     'model': BASIC_MODEL,
-                    'fields': [front.strip(), back.strip()]
+                    'fields': [front, back]
                 })
+            else:
+                logger.warning(f"Unexpected card format: {card_content[:100]}...")
+                
         except Exception as e:
-            logger.error(f"Error parsing card content: {e}")
+            logger.error(f"Error generating card: {e}")
             continue
     
+    if not cards:
+        flash('No cards could be generated from the content', 'warning')
+        
     return cards
 
 
@@ -211,10 +245,21 @@ def upload_file():
             deck_path = os.path.join(app.config['UPLOAD_FOLDER'], deck_filename)
             genanki.Package(deck).write_to_file(deck_path)
             
-            # Clean up the original file
-            os.remove(filepath)
-            
-            return send_file(deck_path, as_attachment=True)
+            # Clean up files
+            try:
+                os.remove(filepath)
+                response = send_file(deck_path, as_attachment=True)
+                @response.call_on_close
+                def cleanup():
+                    try:
+                        os.remove(deck_path)
+                    except:
+                        pass
+                return response
+            except Exception as e:
+                logger.error(f"Error cleaning up files: {e}")
+                flash('Error during file cleanup', 'warning')
+                return redirect(url_for('index'))
             
         except Exception as e:
             logger.error(f"Error processing file: {e}")

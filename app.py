@@ -8,7 +8,6 @@ import anthropic
 from TexSoup import TexSoup
 import genanki
 import random
-from google.cloud import translate_v2 as translate
 import re
 from pypdf import PdfReader
 
@@ -34,15 +33,6 @@ if not api_key:
     raise ValueError("ANTHROPIC_API_KEY environment variable is not set")
 client = anthropic.Client(api_key=api_key)
 
-# Initialize Google Cloud Translation client if credentials are available
-translate_client = None
-try:
-    if os.getenv('GOOGLE_APPLICATION_CREDENTIALS'):
-        translate_client = translate.Client()
-    else:
-        logger.warning("GOOGLE_APPLICATION_CREDENTIALS environment variable not set")
-except Exception as e:
-    logger.warning(f"Google Translate client initialization failed: {e}")
 
 SYSTEM_PROMPT = """
 You are an expert educator and Anki card creator. Your task is to generate Anki cards in a precise format. Always adhere to the following rules:
@@ -59,30 +49,36 @@ def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 def translate_text(text, target_language='en'):
-    """Translate text if translation service is available and target language is not English."""
+    """Translate text using Anthropic's API if target language is not English."""
     if target_language == 'en':
         return text
     
-    if not translate_client:
-        logger.warning("Translation service not available - check GOOGLE_APPLICATION_CREDENTIALS")
-        flash('Translation service not available, proceeding with original text', 'warning')
-        return text
-    
     try:
-        # Split text into smaller chunks to avoid length limits
-        max_chunk_size = 30000  # Google Translate has a limit of 30k characters
-        chunks = [text[i:i + max_chunk_size] for i in range(0, len(text), max_chunk_size)]
+        # Create a translation prompt for Claude
+        language_map = {
+            'he': 'Hebrew',
+            # Add more language mappings as needed
+        }
+        target_language_name = language_map.get(target_language, target_language)
         
-        translated_chunks = []
-        for chunk in chunks:
-            result = translate_client.translate(
-                chunk,
-                target_language=target_language,
-                source_language='en'  # Explicitly set source language
-            )
-            translated_chunks.append(result['translatedText'])
+        prompt = f"""Translate the following text to {target_language_name}. 
+        Maintain all LaTeX formatting and mathematical notation exactly as is. 
+        Only translate the natural language parts:
+
+        {text}"""
         
-        return ' '.join(translated_chunks)
+        response = client.messages.create(
+            model="claude-3-opus-20240229",
+            max_tokens=1500,
+            temperature=0.2,
+            messages=[
+                {"role": "user", "content": prompt}
+            ]
+        )
+        
+        translated_text = response.content
+        return translated_text
+        
     except Exception as e:
         logger.error(f"Translation error: {str(e)}")
         flash('Translation failed, proceeding with original text', 'warning')

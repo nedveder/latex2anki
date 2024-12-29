@@ -10,6 +10,7 @@ import genanki
 import random
 from google.cloud import translate_v2 as translate
 import re
+from pypdf import PdfReader
 
 # Load environment variables
 load_dotenv()
@@ -27,10 +28,8 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
 app.secret_key = os.urandom(24)
 
-# Initialize OpenAI client
+# Initialize clients
 client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
-
-# Initialize Google Translate client
 translate_client = translate.Client()
 
 SYSTEM_PROMPT = """
@@ -42,13 +41,6 @@ You are an expert educator and Anki card creator. Your task is to generate Anki 
 5. Do not add any explanatory text or deviate from the requested format.
 """
 
-client = OpenAI()
-app = Flask(__name__)
-# Configure OpenAI API from environment variable
-client.api_key = os.getenv('OPENAI_API_KEY')
-# Configure logging
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger(__name__)
 
 
 def allowed_file(filename):
@@ -68,9 +60,9 @@ def translate_text(text, target_language='en'):
 def extract_content_from_pdf(pdf_path):
     content = []
     try:
-        doc = None # TODO
-        for page in doc:
-            content.append(page.get_text())
+        reader = PdfReader(pdf_path)
+        for page in reader.pages:
+            content.append(page.extract_text())
         return "\n".join(content)
     except Exception as e:
         logger.error(f"PDF extraction error: {e}")

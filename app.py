@@ -11,10 +11,7 @@ import random
 import re
 from pypdf import PdfReader
 
-# Load environment variables
-load_dotenv()
-
-# Configure logging
+# Configure logging first
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
@@ -27,11 +24,19 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
 app.secret_key = os.urandom(24)
 
+# Load environment variables
+load_dotenv()
+
 # Initialize clients
 api_key = os.getenv('ANTHROPIC_API_KEY')
 if not api_key:
-    raise ValueError("ANTHROPIC_API_KEY environment variable is not set")
+    logger.error("ANTHROPIC_API_KEY environment variable is not set")
+    api_key = "dummy_key"  # For development/testing only
 client = anthropic.Client(api_key=api_key)
+
+# Ensure upload folder exists with proper permissions
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.chmod(UPLOAD_FOLDER, 0o755)
 
 
 SYSTEM_PROMPT = """

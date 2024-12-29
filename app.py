@@ -32,7 +32,7 @@ app.secret_key = os.urandom(24)
 api_key = os.getenv('ANTHROPIC_API_KEY')
 if not api_key:
     raise ValueError("ANTHROPIC_API_KEY environment variable is not set")
-client = anthropic.Anthropic(api_key=api_key)
+client = anthropic.Client(api_key=api_key)
 
 try:
     translate_client = translate.Client()
@@ -152,14 +152,13 @@ def generate_anki_cards(content, content_type):
                 max_tokens=1000,
                 temperature=0.2,
                 system=SYSTEM_PROMPT,
-                messages=[{
-                    "role": "user",
-                    "content": prompt
-                }]
+                messages=[
+                    {"role": "user", "content": prompt}
+                ]
             )
             
             # Parse the response and create card
-            card_content = response.content[0].text
+            card_content = response.content
             if 'Front:' in card_content and 'Back:' in card_content:
                 front = re.search(r'Front:(.*?)(?=Back:)', card_content, re.DOTALL).group(1).strip()
                 back = re.search(r'Back:(.*)', card_content, re.DOTALL).group(1).strip()

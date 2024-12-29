@@ -1,9 +1,37 @@
-import csv
-from openai import OpenAI
-from flask import Flask, render_template, request, jsonify
-from TexSoup import TexSoup
 import os
+from flask import Flask, render_template, request, flash, redirect, url_for, send_file
+from werkzeug.utils import secure_filename
+from dotenv import load_dotenv
 import logging
+from openai import OpenAI
+from TexSoup import TexSoup
+import fitz  # PyMuPDF for PDF processing
+import genanki
+import random
+from google.cloud import translate_v2 as translate
+import re
+
+# Load environment variables
+load_dotenv()
+
+# Configure logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
+
+ALLOWED_EXTENSIONS = {'tex', 'pdf', 'lyx'}
+UPLOAD_FOLDER = os.getenv('UPLOAD_FOLDER', 'uploads')
+MAX_CONTENT_LENGTH = int(os.getenv('MAX_CONTENT_LENGTH', 16777216))
+
+app = Flask(__name__)
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
+app.secret_key = os.urandom(24)
+
+# Initialize OpenAI client
+client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+
+# Initialize Google Translate client
+translate_client = translate.Client()
 
 SYSTEM_PROMPT = """
 You are an expert educator and Anki card creator. Your task is to generate Anki cards in a precise format. Always adhere to the following rules:
@@ -23,13 +51,57 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 
-def generate_anki_prompt(text, card_type):
-    type_template = {
-        'definition': '[TERM]\n*****\n[DEFINITION]',
-        'theorem': '[THEOREM NAME]\n*****\n[THEOREM STATEMENT]\n*****\n[PROOF]',
-        'claim': '[CLAIM]\n*****\n[EXPLANATION]\n*****\n[PROOF/JUSTIFICATION]',
-        'example': '[CONCEPT]\n*****\n[EXAMPLE]\n*****\n[EXPLANATION]',
-        'formula': '[FORMULA NAME]\n*****\n[FORMULA]\n*****\n[VARIABLES EXPLANATION]\n*****\n[USAGE CONTEXT]'
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def translate_text(text, target_language='en'):
+    if target_language == 'en':
+        return text
+    
+    try:
+        result = translate_client.translate(text, target_language=target_language)
+        return result['translatedText']
+    except Exception as e:
+        logger.error(f"Translation error: {e}")
+        return text
+
+def extract_content_from_pdf(pdf_path):
+    content = []
+    try:
+        doc = fitz.open(pdf_path)
+        for page in doc:
+            content.append(page.get_text())
+        return "\n".join(content)
+    except Exception as e:
+        logger.error(f"PDF extraction error: {e}")
+        return ""
+
+def parse_lyx_file(lyx_path):
+    # Basic LyX parsing - you might need to enhance this based on your needs
+    with open(lyx_path, 'r', encoding='utf-8') as file:
+        content = file.read()
+    # Extract the latex content from LyX format
+    # This is a simplified version - you might need to adjust based on your LyX files
+    latex_content = re.findall(r'\\begin_layout.*?\n(.*?)\\end_layout', content, re.DOTALL)
+    return "\n".join(latex_content)
+
+def generate_anki_cards(content, content_type):
+    cards = []
+    
+    # Define card templates
+    templates = {
+        'definition': {
+            'front': '{{Term}}',
+            'back': '{{Definition}}'
+        },
+        'theorem': {
+            'front': '{{Theorem}}',
+            'back': '{{Proof}}'
+        },
+        'example': {
+            'front': '{{Concept}}',
+            'back': '{{Example}}\n{{Explanation}}'
+        }
     }
 
     prompt = f"""Generate an Anki card for the following LaTeX content:
@@ -93,9 +165,74 @@ def extract_sections(tex_file_path):
 
 
 @app.route('/')
-def hello_world():  # put application's code here
-    return extract_sections('uploads/Topology.tex')
+def index():
+    return render_template('index.html')
 
+@app.route('/upload', methods=['POST'])
+def upload_file():
+    if 'file' not in request.files:
+        flash('No file part', 'error')
+        return redirect(url_for('index'))
+    
+    file = request.files['file']
+    if file.filename == '':
+        flash('No selected file', 'error')
+        return redirect(url_for('index'))
+    
+    if file and allowed_file(file.filename):
+        filename = secure_filename(file.filename)
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(filepath)
+        
+        try:
+            # Process the file based on its type
+            file_ext = filename.rsplit('.', 1)[1].lower()
+            if file_ext == 'pdf':
+                content = extract_content_from_pdf(filepath)
+            elif file_ext == 'tex':
+                with open(filepath, 'r', encoding='utf-8') as f:
+                    content = f.read()
+            elif file_ext == 'lyx':
+                content = parse_lyx_file(filepath)
+            
+            # Translate if necessary
+            language = request.form.get('language', 'en')
+            if language != 'en':
+                content = translate_text(content)
+            
+            # Generate Anki cards
+            cards = generate_anki_cards(content, file_ext)
+            
+            # Create Anki deck
+            deck_id = random.randrange(1 << 30, 1 << 31)
+            deck = genanki.Deck(deck_id, f"Math Cards - {filename}")
+            
+            # Add cards to deck
+            for card in cards:
+                note = genanki.Note(
+                    model=card['model'],
+                    fields=card['fields']
+                )
+                deck.add_note(note)
+            
+            # Save the deck
+            deck_filename = f"math_deck_{filename}.apkg"
+            deck_path = os.path.join(app.config['UPLOAD_FOLDER'], deck_filename)
+            genanki.Package(deck).write_to_file(deck_path)
+            
+            # Clean up the original file
+            os.remove(filepath)
+            
+            return send_file(deck_path, as_attachment=True)
+            
+        except Exception as e:
+            logger.error(f"Error processing file: {e}")
+            flash('Error processing file', 'error')
+            return redirect(url_for('index'))
+    
+    flash('Invalid file type', 'error')
+    return redirect(url_for('index'))
 
 if __name__ == '__main__':
-    app.run()
+    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+    app.run(debug=True)

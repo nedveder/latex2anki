@@ -185,8 +185,14 @@ def generate_anki_cards(content, content_type):
             
             # Parse the response and create card
             card_content = response.content
+            # Handle both direct string and TextBlock responses
+            if hasattr(card_content, 'text'):
+                card_content = card_content.text
+                
             if 'Front:' in card_content and 'Back:' in card_content:
+                # Extract content between Front: and Back:
                 front = re.search(r'Front:(.*?)(?=Back:)', card_content, re.DOTALL).group(1).strip()
+                # Extract everything after Back:
                 back = re.search(r'Back:(.*)', card_content, re.DOTALL).group(1).strip()
                 
                 # Ensure LaTeX content is properly formatted

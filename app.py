@@ -132,17 +132,34 @@ BASIC_MODEL = genanki.Model(
     templates=[
         {
             'name': 'Card 1',
-            'qfmt': '[latex]{{Front}}[/latex]',
-            'afmt': '[latex]{{FrontSide}}[/latex]<hr id="answer">[latex]{{Back}}[/latex]',
+            'qfmt': '''
+                <div class="front">\\({{Front}}\\)</div>
+            ''',
+            'afmt': '''
+                <div class="front">\\({{FrontSide}}\\)</div>
+                <hr id="answer">
+                <div class="back">\\({{Back}}\\)</div>
+            ''',
         },
     ],
     css="""
         .card {
-            font-family: arial;
+            font-family: 'Arial', sans-serif;
             font-size: 20px;
             text-align: center;
             color: black;
             background-color: white;
+            padding: 20px;
+        }
+        .front, .back {
+            margin: 20px;
+            line-height: 1.5;
+        }
+        hr {
+            margin: 20px 0;
+        }
+        .MathJax {
+            font-size: 115% !important;
         }
     """)
 
@@ -217,17 +234,51 @@ def generate_anki_cards(content, content_type):
                 card_content = card_content.text
                 
             if 'Front:' in card_content and 'Back:' in card_content:
-                # Extract content between Front: and Back:
-                front = re.search(r'Front:(.*?)(?=Back:)', card_content, re.DOTALL).group(1).strip()
-                # Extract everything after Back:
-                back = re.search(r'Back:(.*)', card_content, re.DOTALL).group(1).strip()
+                # Extract and clean content between Front: and Back:
+                front_match = re.search(r'Front:(.*?)(?=Back:)', card_content, re.DOTALL)
+                back_match = re.search(r'Back:(.*)', card_content, re.DOTALL)
+            
+                if not front_match or not back_match:
+                    logger.warning("Could not extract front/back content")
+                    continue
+                
+                front = front_match.group(1).strip()
+                back = back_match.group(1).strip()
+            
+                # Clean up the content
+                front = validate_latex(front)
+                back = validate_latex(back)
+            
+                # Ensure content isn't empty after cleaning
+                if not front or not back:
+                    logger.warning("Empty content after cleaning")
+                    continue
                 
                 # Ensure LaTeX content is properly formatted
                 def validate_latex(text):
-                    # Ensure math environments are properly wrapped
-                    if '$' not in text and '\\[' not in text and '\\begin{' not in text:
-                        # If no LaTeX delimiters found, wrap the whole content
-                        return f"$${text}$$"
+                    """Clean and format LaTeX content for Anki cards."""
+                    # Remove any existing MathJax/LaTeX delimiters
+                    text = re.sub(r'\\\(|\\\)', '', text)
+                    text = re.sub(r'\$\$(.*?)\$\$', r'\1', text, flags=re.DOTALL)
+                    text = re.sub(r'\$(.*?)\$', r'\1', text)
+                    text = re.sub(r'\\\[(.*?)\\\]', r'\1', text, flags=re.DOTALL)
+    
+                    # Clean up common LaTeX environments
+                    text = re.sub(r'\\begin\{(equation|align|gather)\*?\}(.*?)\\end\{\1\*?\}',
+                                 lambda m: m.group(2).strip(),
+                                 text, flags=re.DOTALL)
+    
+                    # Clean up extra whitespace
+                    text = re.sub(r'\s+', ' ', text).strip()
+    
+                    # Fix common LaTeX commands
+                    text = text.replace('\\textbf{', '\\mathbf{')
+                    text = text.replace('\\text{', '\\mathrm{')
+    
+                    # Ensure proper spacing around operators
+                    text = re.sub(r'([=<>+\-*/])', r' \1 ', text)
+                    text = re.sub(r'\s+', ' ', text)
+    
                     return text
                 
                 front = validate_latex(front)

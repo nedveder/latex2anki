@@ -135,9 +135,16 @@ BASIC_MODEL = genanki.Model(
     """)
 
 def generate_anki_cards(content, content_type):
-    cards = []
+    """Generate Anki cards from LaTeX content.
     
-    # Process content into smaller chunks
+    Args:
+        content (str): LaTeX content to process
+        content_type (str): Type of content ('tex', 'pdf', etc)
+        
+    Returns:
+        list: List of card dictionaries, empty list if no cards could be generated
+    """
+    cards = []
     sections = re.split(r'\n(?=\\(?:section|subsection|definition|theorem|example))', content)
     
     for section in sections:
@@ -204,9 +211,6 @@ def generate_anki_cards(content, content_type):
             logger.error(f"Error generating card: {e}")
             continue
     
-    if not cards:
-        flash('No cards could be generated from the content', 'warning')
-        
     return cards
 
 

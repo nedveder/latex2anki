@@ -15,7 +15,7 @@ def test_hebrew_math_preservation():
     result = translate_text(content, target_language='en')  # Using 'en' to skip actual translation
     
     # Check if LaTeX math environments are preserved
-    assert '$\mathbb{R}^n$' in result
-    assert '$A \subseteq \mathbb{R}^n$' in result
+    assert r'$\mathbb{R}^n$' in result
+    assert r'$A \subseteq \mathbb{R}^n$' in result
     assert r'\begin{definition}' in result
     assert r'\end{definition}' in result

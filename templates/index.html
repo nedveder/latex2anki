@@ -32,10 +32,92 @@
                             <option value="he">Hebrew</option>
                         </select>
                     </div>
-                    <button type="submit" class="btn btn-primary">Convert to Anki Cards</button>
+                    <button type="submit" class="btn btn-primary" id="convertBtn">Convert to Anki Cards</button>
                 </form>
+                
+                <!-- Progress bar (hidden by default) -->
+                <div id="progressContainer" class="mt-3 d-none">
+                    <div class="progress">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                             role="progressbar" 
+                             style="width: 0%" 
+                             id="progressBar">0%</div>
+                    </div>
+                    <p id="statusText" class="text-center mt-2">Processing file...</p>
+                </div>
+                
+                <!-- Download button (hidden by default) -->
+                <div id="downloadContainer" class="mt-3 d-none">
+                    <a href="#" id="downloadBtn" class="btn btn-success">Download Anki Deck</a>
+                </div>
             </div>
         </div>
     </div>
+
+    <!-- Add JavaScript -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const form = document.querySelector('form');
+            const convertBtn = document.getElementById('convertBtn');
+            const progressContainer = document.getElementById('progressContainer');
+            const progressBar = document.getElementById('progressBar');
+            const statusText = document.getElementById('statusText');
+            const downloadContainer = document.getElementById('downloadContainer');
+            const downloadBtn = document.getElementById('downloadBtn');
+
+            form.onsubmit = async function(e) {
+                e.preventDefault();
+                
+                // Show progress bar, hide download button
+                progressContainer.classList.remove('d-none');
+                downloadContainer.classList.add('d-none');
+                convertBtn.disabled = true;
+                
+                // Simulate progress (since we can't get real-time progress from the server)
+                let progress = 0;
+                const progressInterval = setInterval(() => {
+                    progress += 5;
+                    if (progress <= 90) {
+                        progressBar.style.width = progress + '%';
+                        progressBar.textContent = progress + '%';
+                    }
+                }, 500);
+
+                try {
+                    const formData = new FormData(form);
+                    const response = await fetch('/upload', {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    clearInterval(progressInterval);
+                    
+                    if (response.ok) {
+                        // Complete the progress bar
+                        progressBar.style.width = '100%';
+                        progressBar.textContent = '100%';
+                        statusText.textContent = 'Processing complete!';
+                        
+                        // Get the deck data
+                        const blob = await response.blob();
+                        const url = window.URL.createObjectURL(blob);
+                        
+                        // Show download button with correct URL
+                        downloadBtn.href = url;
+                        downloadBtn.download = 'anki_deck.apkg';
+                        downloadContainer.classList.remove('d-none');
+                    } else {
+                        throw new Error('Processing failed');
+                    }
+                } catch (error) {
+                    clearInterval(progressInterval);
+                    statusText.textContent = 'Error: ' + error.message;
+                    progressBar.classList.add('bg-danger');
+                } finally {
+                    convertBtn.disabled = false;
+                }
+            };
+        });
+    </script>
 </body>
 </html>

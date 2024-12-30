@@ -72,14 +72,24 @@ def translate_text(text, target_language='en'):
 
         {text}"""
         
-        response = client.messages.create(
-            model="claude-3-opus-20240229",
-            max_tokens=1500,
-            temperature=0.2,
-            messages=[
-                {"role": "user", "content": prompt}
-            ]
-        )
+        try:
+            # Limit content length
+            if len(prompt) > 4000:
+                logger.warning("Content too long, truncating...")
+                prompt = prompt[:4000] + "..."
+
+            response = client.messages.create(
+                model="claude-3-opus-20240229",
+                max_tokens=1500,
+                temperature=0.2,
+                messages=[
+                    {"role": "user", "content": prompt}
+                ],
+                timeout=30  # 30 second timeout
+            )
+        except Exception as e:
+            logger.error(f"Translation failed: {str(e)}")
+            return text
         
         translated_text = response.content
         return translated_text
@@ -173,15 +183,25 @@ def generate_anki_cards(content, content_type):
             4. Do not convert LaTeX math to plain text
             5. Keep the original LaTeX formatting intact"""
             
-            response = client.messages.create(
-                model="claude-3-opus-20240229",
-                max_tokens=1000,
-                temperature=0.2,
-                system=SYSTEM_PROMPT,
-                messages=[
-                    {"role": "user", "content": prompt}
-                ]
-            )
+            try:
+                # Limit content length
+                if len(prompt) > 4000:  # Reasonable limit for API request
+                    logger.warning("Content too long, truncating...")
+                    prompt = prompt[:4000] + "..."
+
+                response = client.messages.create(
+                    model="claude-3-opus-20240229",
+                    max_tokens=1000,
+                    temperature=0.2,
+                    system=SYSTEM_PROMPT,
+                    messages=[
+                        {"role": "user", "content": prompt}
+                    ],
+                    timeout=30  # 30 second timeout
+                )
+            except Exception as e:
+                logger.error(f"API request failed: {str(e)}")
+                continue
             
             # Parse the response and create card
             card_content = response.content

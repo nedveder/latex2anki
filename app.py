@@ -185,8 +185,13 @@ def generate_anki_cards(content, content_type):
             
             # Parse the response and create card
             card_content = response.content
+            
             # Handle both direct string and TextBlock responses
-            if hasattr(card_content, 'text'):
+            if isinstance(card_content, list):
+                # If it's a list of TextBlocks, get the first one's text
+                if len(card_content) > 0 and hasattr(card_content[0], 'text'):
+                    card_content = card_content[0].text
+            elif hasattr(card_content, 'text'):
                 card_content = card_content.text
                 
             if 'Front:' in card_content and 'Back:' in card_content:

@@ -53,23 +53,25 @@ You are an expert educator and Anki card creator. Your task is to generate Anki 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-def translate_text(text, target_language='en'):
-    """Translate text using Anthropic's API if target language is not English."""
-    if target_language == 'en':
-        return text
-    
+def translate_text(text, source_language='he'):
+    """Translate text from source language to English using Anthropic's API."""
     try:
         # Create a translation prompt for Claude
         language_map = {
             'he': 'Hebrew',
             # Add more language mappings as needed
         }
-        target_language_name = language_map.get(target_language, target_language)
+        source_language_name = language_map.get(source_language, source_language)
         
-        prompt = f"""Translate the following text to {target_language_name}. 
-        Maintain all LaTeX formatting and mathematical notation exactly as is. 
-        Only translate the natural language parts:
-
+        prompt = f"""Translate the following text from {source_language_name} to English. 
+        Follow these rules strictly:
+        1. Preserve all LaTeX commands and environments exactly as they are
+        2. Keep all mathematical notation and equations unchanged
+        3. Only translate the natural language text
+        4. Maintain the document structure
+        5. Keep section titles, theorem names, and definition names in English
+        
+        Text to translate:
         {text}"""
         
         try:
@@ -299,10 +301,10 @@ def upload_file():
             elif file_ext == 'lyx':
                 content = parse_lyx_file(filepath)
             
-            # Translate if necessary
+            # Translate content if source language is specified
             language = request.form.get('language', 'en')
             if language != 'en':
-                content = translate_text(content)
+                content = translate_text(content, source_language=language)
             
             # Generate Anki cards
             cards = generate_anki_cards(content, file_ext)

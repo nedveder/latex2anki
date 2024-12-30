@@ -163,6 +163,32 @@ BASIC_MODEL = genanki.Model(
         }
     """)
 
+def validate_latex(text):
+    """Clean and format LaTeX content for Anki cards."""
+    # Remove any existing MathJax/LaTeX delimiters
+    text = re.sub(r'\\\(|\\\)', '', text)
+    text = re.sub(r'\$\$(.*?)\$\$', r'\1', text, flags=re.DOTALL)
+    text = re.sub(r'\$(.*?)\$', r'\1', text)
+    text = re.sub(r'\\\[(.*?)\\\]', r'\1', text, flags=re.DOTALL)
+
+    # Clean up common LaTeX environments
+    text = re.sub(r'\\begin\{(equation|align|gather)\*?\}(.*?)\\end\{\1\*?\}',
+                 lambda m: m.group(2).strip(),
+                 text, flags=re.DOTALL)
+
+    # Clean up extra whitespace
+    text = re.sub(r'\s+', ' ', text).strip()
+
+    # Fix common LaTeX commands
+    text = text.replace('\\textbf{', '\\mathbf{')
+    text = text.replace('\\text{', '\\mathrm{')
+
+    # Ensure proper spacing around operators
+    text = re.sub(r'([=<>+\-*/])', r' \1 ', text)
+    text = re.sub(r'\s+', ' ', text)
+
+    return text
+
 def generate_anki_cards(content, content_type):
     """Generate Anki cards from LaTeX content.
     
